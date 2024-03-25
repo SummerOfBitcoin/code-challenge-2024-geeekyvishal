@@ -37,7 +37,7 @@ def mine_block(transactions):
             block_transactions.append(transaction)
             spent_txids.add(transaction['tx_id'])
 
-    block_transactions_serialized = '\n'.join(json.dumps(tx) for tx in block_transactions)
+    block_transactions_serialized = json.dumps(block_transactions)
 
     block_header = hash_sha256(block_transactions_serialized)
 
