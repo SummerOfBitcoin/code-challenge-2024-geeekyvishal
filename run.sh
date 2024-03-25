@@ -37,9 +37,18 @@ def mine_block(transactions):
             block_transactions.append(transaction)
             spent_txids.add(transaction['tx_id'])
 
-    block_transactions_serialized = '\n'.join(tx['tx_id'] for tx in block_transactions)
+    block_transactions_serialized = '\n'.join(json.dumps(tx) for tx in block_transactions)
 
-    block_header = 'Block:{}'.format(hash_sha256(block_transactions_serialized))
+    block_header = hash_sha256(block_transactions_serialized)
+
+    nonce = 0
+    while True:
+        block_hash = hash_sha256(block_header + str(nonce))
+        if int(block_hash, 16) < TARGET:
+            break
+        nonce += 1
+
+    block_header = block_header + str(nonce)
 
     return block_header, block_transactions_serialized, total_fees
 
