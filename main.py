@@ -1,71 +1,162 @@
 import hashlib
 import json
 import os
+import time
 
 TARGET = int('0000ffff00000000000000000000000000000000000000000000000000000000', 16)
+MAX_BLOCK_SIZE = 1000000  # Maximum block size in bytes
 
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
 
 def validate_transaction(transaction, spent_txids):
-    if transaction['txid'] in spent_txids:
+    # Extract txid from vin or vout
+    txid = None
+    if 'vin' in transaction and transaction['vin']:
+        txid = transaction['vin'][0].get('txid')
+    elif 'vout' in transaction and transaction['vout']:
+        txid = transaction['vout'][0].get('txid')
+    
+    if txid is None:
         return False
-    if 'vin' not in transaction or 'vout' not in transaction:
+
+    if txid in spent_txids:
         return False
-    for vin in transaction['vin']:
-        if vin['value'] < 0:
-            return False
+
+    # Adding txid to spent_txids to prevent double spending
+    spent_txids.add(txid)
+
+    # Checking if the transaction has a fee field
+    if 'fee' not in transaction:
+        return False
+
     return True
+
+
+
+def calculate_transaction_size(transaction):
+    # Simple calculation of transaction size based on length of serialized JSON
+    return len(json.dumps(transaction))
+
+def extract_txid(transaction):
+    # just hash the serialized transaction data
+    return hash_sha256(json.dumps(transaction))
+
+def build_merkle_root(txids):
+    if len(txids) == 0:
+        return hash_sha256('')
+    if len(txids) == 1:
+        return txids[0]
+
+    # Recursively build Merkle tree
+    intermediate_hashes = [hash_sha256(txids[i] + txids[i+1]) for i in range(0, len(txids), 2)]
+    return build_merkle_root(intermediate_hashes)
+
+def build_coinbase_transaction(coinbase_message, block_height):
+    return {
+        "txid": "coinbase",
+        "vin": [{
+            "coinbase": coinbase_message,
+            "sequence": 0
+        }],
+        "vout": [{
+            "value": 50,  # Initial block reward
+            "recipient": "miner"
+        }],
+        "block_height": block_height,
+        "fee": 0
+    }
 
 def mine_block(transactions):
     block_transactions = []
     spent_txids = set()
     total_fees = 0
+    block_size = 0
+    txids = []
 
-    coinbase_transaction = {
-        "tx_id": "coinbase",
-        "sender": "",
-        "recipient": "miner",
-        "value": 50,
-        "fee": 0
-    }
+    # Build coinbase transaction
+    coinbase_message = "Summer of Bitcoin 2024"
+    coinbase_transaction = build_coinbase_transaction(coinbase_message, len(transactions) + 1)
+    coinbase_txid = extract_txid(coinbase_transaction)
     block_transactions.append(coinbase_transaction)
-    spent_txids.add(coinbase_transaction['tx_id'])
+    spent_txids.add(coinbase_transaction['txid'])
+    block_size += calculate_transaction_size(coinbase_transaction)
+
+    # Sort transactions by fee (high to low)
+    transactions.sort(key=lambda x: x.get('fee', 0), reverse=True)
 
     for transaction in transactions:
+        if block_size >= MAX_BLOCK_SIZE:
+            break
         if validate_transaction(transaction, spent_txids):
-            total_fees += sum(vin['value'] for vin in transaction['vin'])
-            block_transactions.append(transaction)
-            spent_txids.add(transaction['txid'])
+            transaction_size = calculate_transaction_size(transaction)
+            if block_size + transaction_size <= MAX_BLOCK_SIZE:
+                total_fees += transaction['fee']
+                block_transactions.append(transaction)
+                spent_txids.add(transaction['txid'])
+                block_size += transaction_size
+                txids.append(extract_txid(transaction))
 
-    block_transactions_serialized = json.dumps(block_transactions)
+    # Build Merkle root
+    txids.append(coinbase_txid)
+    merkle_root = build_merkle_root(txids)
 
-    block_header = hash_sha256(block_transactions_serialized)
-
+    # Build block header
+    version = 1
+    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
+    bits = "1d00ffff"  # Placeholder for bits
+    timestamp = int(time.time())  # Current timestamp
     nonce = 0
+
     while True:
-        block_hash = hash_sha256(block_header + str(nonce))
-        if int(block_hash, 16) < TARGET:
+        block_header_data = str(version) + prev_block_hash + merkle_root + bits + str(timestamp) + str(nonce)
+        block_header = hash_sha256(block_header_data)
+        if int(block_header, 16) < TARGET:
             break
         nonce += 1
 
-    block_header = block_header + str(nonce)
+    # Add nonce to block header data
+    block_header_data = str(version) + prev_block_hash + merkle_root + bits + str(timestamp) + str(nonce)
 
-    return block_header, block_transactions_serialized, total_fees
+    return block_header_data, block_transactions, total_fees
+
+
+
 
 def main():
-    mempool_path = 'mempool/'
-    transactions = []
-    for filename in os.listdir(mempool_path):
-        with open(os.path.join(mempool_path, filename), 'r') as file:
-            transactions.append(json.load(file))
+    # Get the directory of the script file
+    script_dir = os.path.dirname(__file__)
+    mempool_path = os.path.join(script_dir, 'mempool')
 
-    block_header, block_transactions_serialized, total_fees = mine_block(transactions)
+    try:
+        transactions = []
+        for filename in os.listdir(mempool_path):
+            with open(os.path.join(mempool_path, filename), 'r') as file:
+                transactions.append(json.load(file))
 
-    with open('output.txt', 'w') as output_file:
-        output_file.write(block_header + '\n')
-        output_file.write(block_transactions_serialized + '\n')
-        output_file.write('Total fees: {}'.format(total_fees))
+        block_header, block_transactions, total_fees = mine_block(transactions)
+
+        with open('output.txt', 'w') as output_file:
+            # Write the block header
+            output_file.write(block_header + '\n')
+
+            # Serialize and write the coinbase transaction
+            coinbase_transaction_serialized = json.dumps(block_transactions[0])
+            output_file.write(coinbase_transaction_serialized + '\n')
+
+            # Write the transaction IDs of the mined transactions
+            for transaction in block_transactions[1:]:
+                output_file.write(transaction['txid'] + '\n')
+
+            # Write total fees
+            output_file.write('Total fees: {}\n'.format(total_fees))
+
+        print("Output file 'output.txt' generated successfully.")
+
+    except Exception as e:
+        print("An error occurred:", e)
 
 if __name__ == "__main__":
     main()
+
+
