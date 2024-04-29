@@ -1,85 +1,57 @@
 import hashlib
 import json
 import struct
-
-def hash_sha256(data):
-    return hashlib.sha256(data.encode()).hexdigest()
+import time
 
 def serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, nonce):
-    return (
+    # Serialize the block header according to the format described
+    block_header = (
         struct.pack('<L', version) +
-        bytes.fromhex(prev_block_hash)[::-1] +  # Reverse byte order for little-endian
-        bytes.fromhex(merkle_root)[::-1] +  # Reverse byte order for little-endian
+        bytes.fromhex(prev_block_hash)[::-1] +
+        bytes.fromhex(merkle_root)[::-1] +
         struct.pack('<L', time) +
         struct.pack('<L', nBits) +
         struct.pack('<L', nonce)
     )
-
-def calculate_merkle_root(transactions):
-    txids = [hash_sha256(json.dumps(tx)) for tx in transactions]
-    while len(txids) > 1:
-        if len(txids) % 2 != 0:
-            txids.append(txids[-1])  # Duplicate the last item if the list length is odd
-        txids = [hash_sha256(txids[i] + txids[i+1]) for i in range(0, len(txids), 2)]
-    return txids[0]
+    return block_header.hex()
 
 def main():
-    transaction_json = {
-        "version": 1,
-        "locktime": 0,
-        "vin": [
-            {
-                "txid": "3b7dc918e5671037effad7848727da3d3bf302b05f5ded9bec89449460473bbb",
-                "vout": 16,
-                "prevout": {
-                    "scriptpubkey": "0014f8d9f2203c6f0773983392a487d45c0c818f9573",
-                    "scriptpubkey_asm": "OP_0 OP_PUSHBYTES_20 f8d9f2203c6f0773983392a487d45c0c818f9573",
-                    "scriptpubkey_type": "v0_p2wpkh",
-                    "scriptpubkey_address": "bc1qlrvlygpudurh8xpnj2jg04zupjqcl9tnk5np40",
-                    "value": 37079526
-                },
-                "scriptsig": "",
-                "scriptsig_asm": "",
-                "witness": [
-                    "30440220780ad409b4d13eb1882aaf2e7a53a206734aa302279d6859e254a7f0a7633556022011fd0cbdf5d4374513ef60f850b7059c6a093ab9e46beb002505b7cba0623cf301",
-                    "022bf8c45da789f695d59f93983c813ec205203056e19ec5d3fbefa809af67e2ec"
-                ],
-                "is_coinbase": False,
-                "sequence": 4294967295
-            }
-        ],
-        "vout": [
-            {
-                "scriptpubkey": "76a9146085312a9c500ff9cc35b571b0a1e5efb7fb9f1688ac",
-                "scriptpubkey_asm": "OP_DUP OP_HASH160 OP_PUSHBYTES_20 6085312a9c500ff9cc35b571b0a1e5efb7fb9f16 OP_EQUALVERIFY OP_CHECKSIG",
-                "scriptpubkey_type": "p2pkh",
-                "scriptpubkey_address": "19oMRmCWMYuhnP5W61ABrjjxHc6RphZh11",
-                "value": 100000
-            },
-            {
-                "scriptpubkey": "0014ad4cc1cc859c57477bf90d0f944360d90a3998bf",
-                "scriptpubkey_asm": "OP_0 OP_PUSHBYTES_20 ad4cc1cc859c57477bf90d0f944360d90a3998bf",
-                "scriptpubkey_type": "v0_p2wpkh",
-                "scriptpubkey_address": "bc1q44xvrny9n3t5w7lep58egsmqmy9rnx9lt6u0tc",
-                "value": 36977942
-            }
-        ]
-    }
-
-    transactions = [transaction_json]
+    # Block header parameters
     version = 1
-    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
-    time = 1616832179  # Placeholder for block time
-    nBits = 0x1d00ffff  # Placeholder for nBits
-    nonce = 0  # Placeholder for nonce
+    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+    merkle_root = "0000000000000000000000000000000000000000000000000000000000000000"
+    current_time = int(time.time())
+    nBits = 0x1d00ffff
+    nonce = 0
 
-    merkle_root = calculate_merkle_root(transactions)
+    # Serialized coinbase transaction
+    coinbase_transaction = '{"txid": "coinbase", "vin": [{"coinbase": "Summer of Bitcoin 2024", "sequence": 0}], "vout": [{"value": 50, "recipient": "miner"}], "block_height": 8132, "fee": 0}\n'
 
-    block_header = serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, nonce)
+    # Mined transaction IDs (txids)
+    mined_txids = [
+        "7919f94d93328389ae17b652b246ad092c883d17f69ce0e7f9367aa199884d4e",
+        "8f0282cbfd690ba56111e4bdd1f1193fe6ec5f0f2488a6b88495a8affa4c5b3b",
+        "c3fc0eb3675a6ce1ea836682b6a696fa10a4776077bf2fb0c9104dc220a58137",
+        "9653ffaeffe71d5315a0eb454d3c80801e93e52ae9a438b8cd0ca9dc540da7b6",
+        "882d6be89e429714beb8d30d7f8cadd58aa7703108fe1d0c554f15f18227637d",
+        "cf3b93ea1ff5f685d045ee53ca8d82a19b20fa608458e840b2802f2a427f16fa",
+        "942b846a6c929b6b5490bd240f4c3700b5570f6269afd752386da2742273059c"
+    ]
 
+    # Serialize block header
+    block_header = serialize_block_header(version, prev_block_hash, merkle_root, current_time, nBits, nonce)
+
+    # Write data to output.txt
     with open('output.txt', 'w') as output_file:
-        output_file.write(block_header.hex() + '\n')
-        output_file.write(json.dumps(transaction_json) + '\n')
+        # Write block header
+        output_file.write(block_header + '\n')
+
+        # Write serialized coinbase transaction
+        output_file.write(coinbase_transaction)
+
+        # Write mined transaction IDs
+        for txid in mined_txids:
+            output_file.write(txid + '\n')
 
     print("Output file 'output.txt' generated successfully.")
 
