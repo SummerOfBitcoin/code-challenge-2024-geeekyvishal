@@ -1,15 +1,14 @@
 import hashlib
 import json
 import os
-import time
 import struct
+import time
 
 TARGET = int('0000ffff00000000000000000000000000000000000000000000000000000000', 16)
-MAX_BLOCK_SIZE = 1000000  # Maximum block size in bytes
+MAX_BLOCK_SIZE = 1000000
 
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
-
 
 def validate_transaction(transaction, spent_txids):
     txid = None
@@ -31,16 +30,10 @@ def validate_transaction(transaction, spent_txids):
 
     return True
 
-
-
-
-
 def calculate_transaction_size(transaction):
-    # Simple calculation of transaction size based on length of serialized JSON
     return len(json.dumps(transaction))
 
 def extract_txid(transaction):
-    # For simplicity, we'll just hash the serialized transaction data
     return hash_sha256(json.dumps(transaction))
 
 def build_merkle_root(txids):
@@ -49,44 +42,8 @@ def build_merkle_root(txids):
     if len(txids) == 1:
         return txids[0]
 
-    # Recursively build Merkle tree
     intermediate_hashes = [hash_sha256(txids[i] + txids[i+1]) for i in range(0, len(txids), 2)]
     return build_merkle_root(intermediate_hashes)
-
-def build_coinbase_transaction(coinbase_message, block_height):
-    return {
-        "txid": "coinbase",
-        "vin": [{
-            "coinbase": coinbase_message,
-            "sequence": 0
-        }],
-        "vout": [{
-            "value": 50,  # Initial block reward
-            "recipient": "miner"
-        }],
-        "block_height": block_height,
-        "fee": 0
-    }
-
-def calculate_header(transaction):
-    # Hash the fields
-    version_hash = hashlib.sha256(str(transaction['version']).encode()).hexdigest()
-    locktime_hash = hashlib.sha256(str(transaction['locktime']).encode()).hexdigest()
-    vin_hash = hashlib.sha256(json.dumps(transaction['vin']).encode()).hexdigest()
-    vout_hash = hashlib.sha256(json.dumps(transaction['vout']).encode()).hexdigest()
-
-    # Concatenate the hashed values
-    concatenated = version_hash + locktime_hash + vin_hash + vout_hash
-
-    # Ensure the concatenated string is exactly 80 bytes long
-    header = concatenated[:80].ljust(80, '0')
-
-    return header
-
-def calculate_transaction_fee(transaction):
-    input_value = sum([vin['prevout']['value'] for vin in transaction['vin']])
-    output_value = sum([vout['value'] for vout in transaction['vout']])
-    return input_value - output_value
 
 def build_coinbase_transaction(coinbase_message, block_height):
     return {
@@ -102,6 +59,16 @@ def build_coinbase_transaction(coinbase_message, block_height):
         "block_height": block_height,
         "fee": 0
     }
+
+def serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, nonce):
+    return (
+        struct.pack('<L', version) +
+        bytes.fromhex(prev_block_hash) +
+        bytes.fromhex(merkle_root) +
+        struct.pack('<L', time) +
+        struct.pack('<L', nBits) +
+        struct.pack('<L', nonce)
+    )
 
 def mine_block(transactions):
     block_transactions = []
@@ -136,39 +103,23 @@ def mine_block(transactions):
 
     version = 1
     prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-    bits = "1d00ffff"
-    timestamp = int(time.time())
+    time_stamp = int(time.time())
+    nBits = 0x1bc330
     nonce = 0
 
-    block_header_data = (
-        struct.pack('<L', version) +
-        bytes.fromhex(prev_block_hash) +
-        bytes.fromhex(merkle_root) +
-        bytes.fromhex(bits) +
-        struct.pack('<L', timestamp) +
-        struct.pack('<L', nonce)
-    )
+    block_header_data = serialize_block_header(version, prev_block_hash, merkle_root, time_stamp, nBits, nonce)
 
     while True:
         block_header_hash = hashlib.sha256(hashlib.sha256(block_header_data).digest()).digest()
         if int.from_bytes(block_header_hash, "big") < TARGET:
             break
         nonce += 1
-        block_header_data = (
-            struct.pack('<L', version) +
-            bytes.fromhex(prev_block_hash) +
-            bytes.fromhex(merkle_root) +
-            bytes.fromhex(bits) +
-            struct.pack('<L', timestamp) +
-            struct.pack('<L', nonce)
-        )
+        block_header_data = serialize_block_header(version, prev_block_hash, merkle_root, time_stamp, nBits, nonce)
 
     block_header = block_header_hash.hex()
 
-    # Ensure the block header is exactly 80 bytes long by padding with zeros
-    block_header = block_header.ljust(80, '0')
-
     return block_header, block_transactions, total_fees
+
 
 
 def main():
