@@ -23,15 +23,14 @@ def validate_transaction(transaction, spent_txids):
     if txid in spent_txids:
         return False
 
-    # Adding txid to spent_txids to prevent double spending
+    # Add txid to spent_txids to prevent double spending
     spent_txids.add(txid)
 
-    # Checking if the transaction has a fee field
+    # Check if the transaction has a fee field
     if 'fee' not in transaction:
         return False
 
     return True
-
 
 
 def calculate_transaction_size(transaction):
@@ -39,7 +38,7 @@ def calculate_transaction_size(transaction):
     return len(json.dumps(transaction))
 
 def extract_txid(transaction):
-    # just hash the serialized transaction data
+    # For simplicity, we'll just hash the serialized transaction data
     return hash_sha256(json.dumps(transaction))
 
 def build_merkle_root(txids):
@@ -67,9 +66,7 @@ def build_coinbase_transaction(coinbase_message, block_height):
         "fee": 0
     }
 
-erkle_root(txids)
-
-    # Build block headerdef mine_block(transactions):
+def mine_block(transactions):
     block_transactions = []
     spent_txids = set()
     total_fees = 0
@@ -101,7 +98,9 @@ erkle_root(txids)
 
     # Build Merkle root
     txids.append(coinbase_txid)
-    merkle_root = build_m
+    merkle_root = build_merkle_root(txids)
+
+    # Build block header
     version = 1
     prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
     bits = "1d00ffff"  # Placeholder for bits
@@ -119,6 +118,7 @@ erkle_root(txids)
     block_header_data = str(version) + prev_block_hash + merkle_root + bits + str(timestamp) + str(nonce)
 
     return block_header_data, block_transactions, total_fees
+
 
 
 
@@ -168,3 +168,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
