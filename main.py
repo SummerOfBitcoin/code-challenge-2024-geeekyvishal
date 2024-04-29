@@ -29,6 +29,12 @@ def validate_transaction(transaction, spent_txids):
 
     return True
 
+
+def calculate_transaction_size(transaction):
+    #calculation of transaction size based on length of serialized JSON
+    return len(json.dumps(transaction))
+
+
 def extract_txid(transaction):
     if 'txid' in transaction:
         return transaction['txid']
@@ -57,33 +63,47 @@ def build_coinbase_transaction(coinbase_message, block_height):
     }
 
 def mine_block(transactions):
-    # Existing code...
-    
-    version = 1
-    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-    bits = "1d00ffff"
-    timestamp = int(time.time())
-    nonce = 0
+    block_transactions = []
+    spent_txids = set()
+    total_fees = 0
+    block_size = 0
+    txids = []
+
+    # Build coinbase transaction
+    coinbase_message = "Summer of Bitcoin 2024"
+    coinbase_transaction = build_coinbase_transaction(coinbase_message, len(transactions) + 1)
+    coinbase_txid = extract_txid(coinbase_transaction)
+    block_transactions.append(coinbase_transaction)
+    spent_txids.add(coinbase_transaction['txid'])
+    block_size += calculate_transaction_size(coinbase_transaction)
+
+    # Sort transactions by fee (high to low)
+    transactions.sort(key=lambda x: x.get('fee', 0), reverse=True)
+
+    for transaction in transactions:
+        if block_size >= MAX_BLOCK_SIZE:
+            break
+        if validate_transaction(transaction, spent_txids):
+            transaction_size = calculate_transaction_size(transaction)
+            if block_size + transaction_size <= MAX_BLOCK_SIZE:
+                total_fees += transaction['fee']
+                block_transactions.append(transaction)
+                spent_txids.add(transaction['txid'])
+                block_size += transaction_size
+                txids.append(extract_txid(transaction))
 
     # Build Merkle root
     txids.append(coinbase_txid)
     merkle_root = build_merkle_root(txids)
 
     # Build block header
-    block_header_data = (
-        f"{version:08x}"
-        f"{prev_block_hash}"
-        f"{merkle_root}"
-        f"{bits}"
-        f"{timestamp:08x}"
-        f"{nonce:08x}"
-    )
+    version = 1
+    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
+    bits = "1d00ffff"  # Placeholder for bits
+    timestamp = int(time.time())  # Current timestamp
+    nonce = 0
 
     while True:
-        block_header = hash_sha256(block_header_data)
-        if int(block_header, 16) < TARGET:
-            break
-        nonce += 1
         block_header_data = (
             f"{version:08x}"
             f"{prev_block_hash}"
@@ -92,12 +112,17 @@ def mine_block(transactions):
             f"{timestamp:08x}"
             f"{nonce:08x}"
         )
+        block_header = hash_sha256(block_header_data)
+        if int(block_header, 16) < TARGET:
+            break
+        nonce += 1
 
     return block_header, block_transactions, total_fees
 
 
 def main():
-    mempool_path = 'mempool'
+    script_dir = os.path.dirname(__file__)
+    mempool_path = os.path.join(script_dir, 'mempool')
     
     try:
         transactions = []
