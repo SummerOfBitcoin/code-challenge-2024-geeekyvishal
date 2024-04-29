@@ -10,6 +10,31 @@ MAX_BLOCK_SIZE = 1000000  # Maximum block size in bytes
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
 
+
+def validate_transaction(transaction, spent_txids):
+    txid = None
+    if 'vin' in transaction and transaction['vin']:
+        txid = transaction['vin'][0].get('txid')
+    elif 'vout' in transaction and transaction['vout']:
+        txid = transaction['vout'][0].get('txid')
+    
+    if txid is None:
+        return False
+
+    if txid in spent_txids:
+        return False
+
+    spent_txids.add(txid)
+
+    if 'fee' not in transaction:
+        return False
+
+    return True
+
+
+
+
+
 def calculate_transaction_size(transaction):
     # Simple calculation of transaction size based on length of serialized JSON
     return len(json.dumps(transaction))
@@ -70,7 +95,6 @@ def mine_block(transactions):
     block_size = 0
     txids = []
 
-    # Build coinbase transaction
     coinbase_message = "Summer of Bitcoin 2024"
     coinbase_transaction = build_coinbase_transaction(coinbase_message, len(transactions) + 1)
     coinbase_txid = extract_txid(coinbase_transaction)
@@ -78,42 +102,52 @@ def mine_block(transactions):
     spent_txids.add(coinbase_transaction['txid'])
     block_size += calculate_transaction_size(coinbase_transaction)
 
-    # Sort transactions by fee (high to low)
-    transactions.sort(key=lambda x: calculate_transaction_fee(x), reverse=True)
+    transactions.sort(key=lambda x: x.get('fee', 0), reverse=True)
 
     for transaction in transactions:
         if block_size >= MAX_BLOCK_SIZE:
             break
-        transaction_size = calculate_transaction_size(transaction)
-        if block_size + transaction_size <= MAX_BLOCK_SIZE:
-            total_fees += calculate_transaction_fee(transaction)
-            block_transactions.append(transaction)
-            spent_txids.add(extract_txid(transaction))
-            block_size += transaction_size
-            txids.append(extract_txid(transaction))
+        if validate_transaction(transaction, spent_txids):
+            transaction_size = calculate_transaction_size(transaction)
+            if block_size + transaction_size <= MAX_BLOCK_SIZE:
+                total_fees += transaction.get('fee', 0)
+                block_transactions.append(transaction)
+                spent_txids.add(transaction['txid'])
+                block_size += transaction_size
+                txids.append(extract_txid(transaction))
 
-    # Build Merkle root
     txids.append(coinbase_txid)
     merkle_root = build_merkle_root(txids)
 
-   # Build block header
     version = 1
-    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
-    bits = "1d00ffff"  # Placeholder for bits
-    timestamp = int(time.time())  # Current timestamp
+    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+    bits = "1d00ffff"
+    timestamp = int(time.time())
     nonce = 0
 
-    # Pack block header data into a byte string
-    block_header_data = struct.pack("<L", version) + bytes.fromhex(prev_block_hash) + bytes.fromhex(merkle_root) + bytes.fromhex(bits) + struct.pack("<L", timestamp) + struct.pack("<L", nonce)
+    block_header_data = (
+        struct.pack('<L', version) +
+        bytes.fromhex(prev_block_hash) +
+        bytes.fromhex(merkle_root) +
+        bytes.fromhex(bits) +
+        struct.pack('<L', timestamp) +
+        struct.pack('<L', nonce)  # Ensure timestamp and nonce are represented by 4-byte unsigned integers
+    )
 
     while True:
         block_header_hash = hashlib.sha256(hashlib.sha256(block_header_data).digest()).digest()
         if int.from_bytes(block_header_hash, "big") < TARGET:
             break
         nonce += 1
-        block_header_data = struct.pack("<L", version) + bytes.fromhex(prev_block_hash) + bytes.fromhex(merkle_root) + bytes.fromhex(bits) + struct.pack("<L", timestamp) + struct.pack("<L", nonce)
+        block_header_data = (
+            struct.pack('<L', version) +
+            bytes.fromhex(prev_block_hash) +
+            bytes.fromhex(merkle_root) +
+            bytes.fromhex(bits) +
+            struct.pack('<L', timestamp) +
+            struct.pack('<L', nonce)
+        )
 
-    # Convert block header data to hexadecimal string
     block_header = block_header_hash.hex()
 
     return block_header, block_transactions, total_fees
