@@ -57,52 +57,44 @@ def build_coinbase_transaction(coinbase_message, block_height):
     }
 
 def mine_block(transactions):
-    block_transactions = []
-    spent_txids = set()
-    total_fees = 0
-    block_size = 0
-    txids = []
-
-    coinbase_message = "Summer of Bitcoin 2024"
-    coinbase_transaction = build_coinbase_transaction(coinbase_message, len(transactions) + 1)
-    coinbase_txid = extract_txid(coinbase_transaction)
-    block_transactions.append(coinbase_transaction)
-    spent_txids.add(coinbase_transaction['txid'])
-    block_size += len(json.dumps(coinbase_transaction))
-
-    transactions.sort(key=lambda x: x.get('fee', 0), reverse=True)
-
-    for transaction in transactions:
-        if block_size >= MAX_BLOCK_SIZE:
-            break
-        if validate_transaction(transaction, spent_txids):
-            transaction_size = len(json.dumps(transaction))
-            if block_size + transaction_size <= MAX_BLOCK_SIZE:
-                total_fees += transaction['fee']
-                block_transactions.append(transaction)
-                spent_txids.add(extract_txid(transaction))
-                block_size += transaction_size
-                txids.append(extract_txid(transaction))
-
-    txids.append(coinbase_txid)
-    merkle_root = build_merkle_root(txids)
-
+    # Existing code...
+    
     version = 1
     prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"
     bits = "1d00ffff"
     timestamp = int(time.time())
     nonce = 0
 
+    # Build Merkle root
+    txids.append(coinbase_txid)
+    merkle_root = build_merkle_root(txids)
+
+    # Build block header
+    block_header_data = (
+        f"{version:08x}"
+        f"{prev_block_hash}"
+        f"{merkle_root}"
+        f"{bits}"
+        f"{timestamp:08x}"
+        f"{nonce:08x}"
+    )
+
     while True:
-        block_header_data = str(version) + prev_block_hash + merkle_root + bits + str(timestamp) + str(nonce)
         block_header = hash_sha256(block_header_data)
         if int(block_header, 16) < TARGET:
             break
         nonce += 1
+        block_header_data = (
+            f"{version:08x}"
+            f"{prev_block_hash}"
+            f"{merkle_root}"
+            f"{bits}"
+            f"{timestamp:08x}"
+            f"{nonce:08x}"
+        )
 
-    block_header_data = str(version) + prev_block_hash + merkle_root + bits + str(timestamp) + str(nonce)
+    return block_header, block_transactions, total_fees
 
-    return block_header_data, block_transactions, total_fees
 
 def main():
     mempool_path = 'mempool'
