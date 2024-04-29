@@ -88,6 +88,21 @@ def calculate_transaction_fee(transaction):
     output_value = sum([vout['value'] for vout in transaction['vout']])
     return input_value - output_value
 
+def build_coinbase_transaction(coinbase_message, block_height):
+    return {
+        "txid": "coinbase",
+        "vin": [{
+            "coinbase": coinbase_message,
+            "sequence": 0
+        }],
+        "vout": [{
+            "value": 50,
+            "recipient": "miner"
+        }],
+        "block_height": block_height,
+        "fee": 0
+    }
+
 def mine_block(transactions):
     block_transactions = []
     spent_txids = set()
@@ -131,7 +146,7 @@ def mine_block(transactions):
         bytes.fromhex(merkle_root) +
         bytes.fromhex(bits) +
         struct.pack('<L', timestamp) +
-        struct.pack('<L', nonce)  # Ensure timestamp and nonce are represented by 4-byte unsigned integers
+        struct.pack('<L', nonce)
     )
 
     while True:
@@ -149,6 +164,9 @@ def mine_block(transactions):
         )
 
     block_header = block_header_hash.hex()
+
+    # Ensure the block header is exactly 80 bytes long by padding with zeros
+    block_header = block_header.ljust(80, '0')
 
     return block_header, block_transactions, total_fees
 
