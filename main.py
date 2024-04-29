@@ -67,7 +67,9 @@ def build_coinbase_transaction(coinbase_message, block_height):
         "fee": 0
     }
 
-def mine_block(transactions):
+erkle_root(txids)
+
+    # Build block headerdef mine_block(transactions):
     block_transactions = []
     spent_txids = set()
     total_fees = 0
@@ -99,9 +101,7 @@ def mine_block(transactions):
 
     # Build Merkle root
     txids.append(coinbase_txid)
-    merkle_root = build_merkle_root(txids)
-
-    # Build block header
+    merkle_root = build_m
     version = 1
     prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
     bits = "1d00ffff"  # Placeholder for bits
@@ -137,16 +137,26 @@ def main():
         block_header, block_transactions, total_fees = mine_block(transactions)
 
         with open('output.txt', 'w') as output_file:
+            # Check block header length
+            if len(block_header) != 64:
+                raise ValueError("Invalid block header length")
+
             # Write the block header
             output_file.write(block_header + '\n')
 
-            # Serialize and write the coinbase transaction
+            # Serialize and check the length of the coinbase transaction
             coinbase_transaction_serialized = json.dumps(block_transactions[0])
+            if len(coinbase_transaction_serialized) > MAX_BLOCK_SIZE:
+                raise ValueError("Coinbase transaction size exceeds maximum block size")
+
+            # Write the serialized coinbase transaction
             output_file.write(coinbase_transaction_serialized + '\n')
 
             # Write the transaction IDs of the mined transactions
             for transaction in block_transactions[1:]:
-                output_file.write(transaction['txid'] + '\n')
+                txid = transaction.get('txid')
+                if txid:
+                    output_file.write(txid + '\n')
 
             # Write total fees
             output_file.write('Total fees: {}\n'.format(total_fees))
@@ -154,9 +164,7 @@ def main():
         print("Output file 'output.txt' generated successfully.")
 
     except Exception as e:
-        print("An error occurred:", e)
+        print("Error:", e)
 
 if __name__ == "__main__":
     main()
-
-
