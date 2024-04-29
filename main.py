@@ -15,6 +15,15 @@ def serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, n
     )
     return block_header.hex()
 
+def mine_block(version, prev_block_hash, merkle_root, time, nBits, target_difficulty):
+    nonce = 0
+    while True:
+        block_header = serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, nonce)
+        block_hash = hashlib.sha256(hashlib.sha256(bytes.fromhex(block_header)).digest()).digest()
+        if int.from_bytes(block_hash[::-1], byteorder='big') < target_difficulty:
+            return block_header, nonce
+        nonce += 1
+
 def main():
     # Block header parameters
     version = 1
@@ -22,7 +31,10 @@ def main():
     merkle_root = "0000000000000000000000000000000000000000000000000000000000000000"
     current_time = int(time.time())
     nBits = 0x1d00ffff
-    nonce = 0
+    target_difficulty = 0x0000ffff00000000000000000000000000000000000000000000000000000000
+
+    # Mine the block
+    block_header, nonce = mine_block(version, prev_block_hash, merkle_root, current_time, nBits, target_difficulty)
 
     # Serialized coinbase transaction
     coinbase_transaction = '{"txid": "coinbase", "vin": [{"coinbase": "Summer of Bitcoin 2024", "sequence": 0}], "vout": [{"value": 50, "recipient": "miner"}], "block_height": 8132, "fee": 0}\n'
@@ -37,9 +49,6 @@ def main():
         "cf3b93ea1ff5f685d045ee53ca8d82a19b20fa608458e840b2802f2a427f16fa",
         "942b846a6c929b6b5490bd240f4c3700b5570f6269afd752386da2742273059c"
     ]
-
-    # Serialize block header
-    block_header = serialize_block_header(version, prev_block_hash, merkle_root, current_time, nBits, nonce)
 
     # Write data to output.txt
     with open('output.txt', 'w') as output_file:
