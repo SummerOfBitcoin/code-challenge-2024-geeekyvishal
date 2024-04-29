@@ -1,150 +1,87 @@
 import hashlib
 import json
-import os
 import struct
-import time
-
-TARGET = int('0000ffff00000000000000000000000000000000000000000000000000000000', 16)
-MAX_BLOCK_SIZE = 1000000
 
 def hash_sha256(data):
     return hashlib.sha256(data.encode()).hexdigest()
 
-def validate_transaction(transaction, spent_txids):
-    txid = None
-    if 'vin' in transaction and transaction['vin']:
-        txid = transaction['vin'][0].get('txid')
-    elif 'vout' in transaction and transaction['vout']:
-        txid = transaction['vout'][0].get('txid')
-    
-    if txid is None:
-        return False
-
-    if txid in spent_txids:
-        return False
-
-    spent_txids.add(txid)
-
-    if 'fee' not in transaction:
-        return False
-
-    return True
-
-def calculate_transaction_size(transaction):
-    return len(json.dumps(transaction))
-
-def extract_txid(transaction):
-    return hash_sha256(json.dumps(transaction))
-
-def build_merkle_root(txids):
-    if len(txids) == 0:
-        return hash_sha256('')
-    if len(txids) == 1:
-        return txids[0]
-
-    intermediate_hashes = [hash_sha256(txids[i] + txids[i+1]) for i in range(0, len(txids), 2)]
-    return build_merkle_root(intermediate_hashes)
-
-def build_coinbase_transaction(coinbase_message, block_height):
-    return {
-        "txid": "coinbase",
-        "vin": [{
-            "coinbase": coinbase_message,
-            "sequence": 0
-        }],
-        "vout": [{
-            "value": 50,
-            "recipient": "miner"
-        }],
-        "block_height": block_height,
-        "fee": 0
-    }
-
 def serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, nonce):
     return (
         struct.pack('<L', version) +
-        bytes.fromhex(prev_block_hash) +
-        bytes.fromhex(merkle_root) +
+        bytes.fromhex(prev_block_hash)[::-1] +  # Reverse byte order for little-endian
+        bytes.fromhex(merkle_root)[::-1] +  # Reverse byte order for little-endian
         struct.pack('<L', time) +
         struct.pack('<L', nBits) +
         struct.pack('<L', nonce)
     )
 
-def mine_block(transactions):
-    block_transactions = []
-    spent_txids = set()
-    total_fees = 0
-    block_size = 0
-    txids = []
-
-    coinbase_message = "Summer of Bitcoin 2024"
-    coinbase_transaction = build_coinbase_transaction(coinbase_message, len(transactions) + 1)
-    coinbase_txid = extract_txid(coinbase_transaction)
-    block_transactions.append(coinbase_transaction)
-    spent_txids.add(coinbase_transaction['txid'])
-    block_size += calculate_transaction_size(coinbase_transaction)
-
-    transactions.sort(key=lambda x: x.get('fee', 0), reverse=True)
-
-    for transaction in transactions:
-        if block_size >= MAX_BLOCK_SIZE:
-            break
-        if validate_transaction(transaction, spent_txids):
-            transaction_size = calculate_transaction_size(transaction)
-            if block_size + transaction_size <= MAX_BLOCK_SIZE:
-                total_fees += transaction.get('fee', 0)
-                block_transactions.append(transaction)
-                spent_txids.add(transaction['txid'])
-                block_size += transaction_size
-                txids.append(extract_txid(transaction))
-
-    txids.append(coinbase_txid)
-    merkle_root = build_merkle_root(txids)
-
-    version = 1
-    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-    time_stamp = int(time.time())
-    nBits = 0x1bc330
-    nonce = 0
-
-    block_header_data = serialize_block_header(version, prev_block_hash, merkle_root, time_stamp, nBits, nonce)
-
-    while True:
-        block_header_hash = hashlib.sha256(hashlib.sha256(block_header_data).digest()).digest()
-        if int.from_bytes(block_header_hash, "big") < TARGET:
-            break
-        nonce += 1
-        block_header_data = serialize_block_header(version, prev_block_hash, merkle_root, time_stamp, nBits, nonce)
-
-    block_header = block_header_hash.hex()
-
-    return block_header, block_transactions, total_fees
-
-
+def calculate_merkle_root(transactions):
+    txids = [hash_sha256(json.dumps(tx)) for tx in transactions]
+    while len(txids) > 1:
+        if len(txids) % 2 != 0:
+            txids.append(txids[-1])  # Duplicate the last item if the list length is odd
+        txids = [hash_sha256(txids[i] + txids[i+1]) for i in range(0, len(txids), 2)]
+    return txids[0]
 
 def main():
-    script_dir = os.path.dirname(__file__)
-    mempool_path = os.path.join(script_dir, 'mempool')
+    transaction_json = {
+        "version": 1,
+        "locktime": 0,
+        "vin": [
+            {
+                "txid": "3b7dc918e5671037effad7848727da3d3bf302b05f5ded9bec89449460473bbb",
+                "vout": 16,
+                "prevout": {
+                    "scriptpubkey": "0014f8d9f2203c6f0773983392a487d45c0c818f9573",
+                    "scriptpubkey_asm": "OP_0 OP_PUSHBYTES_20 f8d9f2203c6f0773983392a487d45c0c818f9573",
+                    "scriptpubkey_type": "v0_p2wpkh",
+                    "scriptpubkey_address": "bc1qlrvlygpudurh8xpnj2jg04zupjqcl9tnk5np40",
+                    "value": 37079526
+                },
+                "scriptsig": "",
+                "scriptsig_asm": "",
+                "witness": [
+                    "30440220780ad409b4d13eb1882aaf2e7a53a206734aa302279d6859e254a7f0a7633556022011fd0cbdf5d4374513ef60f850b7059c6a093ab9e46beb002505b7cba0623cf301",
+                    "022bf8c45da789f695d59f93983c813ec205203056e19ec5d3fbefa809af67e2ec"
+                ],
+                "is_coinbase": False,
+                "sequence": 4294967295
+            }
+        ],
+        "vout": [
+            {
+                "scriptpubkey": "76a9146085312a9c500ff9cc35b571b0a1e5efb7fb9f1688ac",
+                "scriptpubkey_asm": "OP_DUP OP_HASH160 OP_PUSHBYTES_20 6085312a9c500ff9cc35b571b0a1e5efb7fb9f16 OP_EQUALVERIFY OP_CHECKSIG",
+                "scriptpubkey_type": "p2pkh",
+                "scriptpubkey_address": "19oMRmCWMYuhnP5W61ABrjjxHc6RphZh11",
+                "value": 100000
+            },
+            {
+                "scriptpubkey": "0014ad4cc1cc859c57477bf90d0f944360d90a3998bf",
+                "scriptpubkey_asm": "OP_0 OP_PUSHBYTES_20 ad4cc1cc859c57477bf90d0f944360d90a3998bf",
+                "scriptpubkey_type": "v0_p2wpkh",
+                "scriptpubkey_address": "bc1q44xvrny9n3t5w7lep58egsmqmy9rnx9lt6u0tc",
+                "value": 36977942
+            }
+        ]
+    }
 
-    try:
-        transactions = []
-        for filename in os.listdir(mempool_path):
-            with open(os.path.join(mempool_path, filename), 'r') as file:
-                transactions.append(json.load(file))
+    transactions = [transaction_json]
+    version = 1
+    prev_block_hash = "0000000000000000000000000000000000000000000000000000000000000000"  # Placeholder for previous block hash
+    time = 1616832179  # Placeholder for block time
+    nBits = 0x1d00ffff  # Placeholder for nBits
+    nonce = 0  # Placeholder for nonce
 
-        block_header, block_transactions, total_fees = mine_block(transactions)
+    merkle_root = calculate_merkle_root(transactions)
 
-        with open('output.txt', 'w') as output_file:
-            output_file.write(block_header + '\n')
-            output_file.write(json.dumps(block_transactions[0]) + '\n')
-            for transaction in block_transactions[1:]:
-                output_file.write(extract_txid(transaction) + '\n')
-            output_file.write('Total fees: {}\n'.format(total_fees))
+    block_header = serialize_block_header(version, prev_block_hash, merkle_root, time, nBits, nonce)
 
-        print("Output file 'output.txt' generated successfully.")
+    with open('output.txt', 'w') as output_file:
+        output_file.write(block_header.hex() + '\n')
+        output_file.write(json.dumps(transaction_json) + '\n')
 
-    except Exception as e:
-        print("Error:", e)
+    print("Output file 'output.txt' generated successfully.")
 
 if __name__ == "__main__":
     main()
